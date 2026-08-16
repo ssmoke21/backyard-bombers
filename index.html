@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Backyard Bombers</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <!-- Settings corner. Only shows on menus. -->
+  <button id="gear" title="Settings">⚙️</button>
+
+  <!-- Screens that sit on top of the canvas. Only one is visible at a time. -->
+  <div id="overlay">
+
+    <!-- ---------------- TITLE ---------------- -->
+    <div class="screen" id="screen-title">
+      <h1>BACKYARD<br>BOMBERS</h1>
+      <p class="sub">Ten pitches. Five bosses. Some very silly bats.</p>
+      <button class="big" id="btn-play">PLAY</button>
+      <p class="tiny">Hold anywhere to charge. Let go to swing.<br>(Desktop: hold the SPACEBAR)</p>
+    </div>
+
+    <!-- ---------------- BOSS LADDER ---------------- -->
+    <div class="screen hidden" id="screen-ladder">
+      <h2>THE LINEUP</h2>
+      <div id="ladder-list" class="list"></div>
+      <button class="small ghost" id="btn-ladder-back">← Title</button>
+    </div>
+
+    <!-- ---------------- CHARACTER + BAT SELECT ---------------- -->
+    <div class="screen hidden scrolls" id="screen-select">
+      <div id="select-boss" class="bosscard"></div>
+
+      <div class="pickblock">
+        <h3>WHO'S BATTING?</h3>
+        <div id="pick-characters" class="tiles"></div>
+        <p id="joke-character" class="joke"></p>
+      </div>
+
+      <div class="pickblock">
+        <h3>PICK YOUR BAT</h3>
+        <div id="pick-bats" class="tiles"></div>
+        <p id="joke-bat" class="joke"></p>
+      </div>
+
+      <button class="big" id="btn-start">BATTER UP</button>
+      <button class="small ghost" id="btn-select-back">← Lineup</button>
+    </div>
+
+    <!-- ---------------- ROUND OVER ---------------- -->
+    <div class="screen hidden" id="screen-round">
+      <h2 id="round-title">ROUND OVER</h2>
+      <div id="round-stats"></div>
+      <div id="round-extra"></div>
+      <div id="round-buttons" class="buttonrow"></div>
+    </div>
+
+    <!-- ---------------- VICTORY ---------------- -->
+    <div class="screen hidden" id="screen-victory">
+      <h1 class="small-title">YOU BEAT<br>EVERYBODY</h1>
+      <div id="victory-text"></div>
+      <button class="big" id="btn-victory-ok">NICE</button>
+    </div>
+
+    <!-- ---------------- PAUSED ---------------- -->
+    <div class="screen hidden" id="screen-pause">
+      <h2>PAUSED</h2>
+      <div id="pause-info" class="tiny"></div>
+      <button class="big" id="btn-resume">RESUME</button>
+      <div class="buttonrow">
+        <button class="small" id="btn-pause-sound">🔊 SOUND</button>
+        <button class="small ghost" id="btn-pause-restart">RESTART ROUND</button>
+      </div>
+      <button class="small ghost" id="btn-pause-quit">QUIT TO LINEUP</button>
+      <p class="tiny">Press <b>P</b> or <b>Esc</b> to pause and unpause.</p>
+    </div>
+
+    <!-- ---------------- SETTINGS ---------------- -->
+    <div class="screen hidden" id="screen-settings">
+      <h2>SETTINGS</h2>
+      <div id="settings-info" class="tiny"></div>
+      <button class="big" id="btn-sound">🔊  SOUND: ON</button>
+      <button class="big danger" id="btn-reset">RESET ALL PROGRESS</button>
+      <p class="tiny">This wipes your bosses, bats, characters and best score.<br>There is no undo. Ask a grown-up.</p>
+      <button class="small ghost" id="btn-settings-back">← Back</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="content.js"></script>
+<script src="sound.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+/* Backyard Bombers - menus and layout only. All the game art is on the canvas. */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #10131a;
+  overflow: hidden;
+  font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif;
+  color: #fff;
+  touch-action: none;
+  user-select: none;
+}
+
+#stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#game {
+  display: block;
+  background: #1d6b2f;
+  border-radius: 10px;
+  touch-action: none;
+}
+
+#gear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  font-size: 22px;
+  line-height: 1;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+}
+#gear.hidden { display: none; }
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.screen {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 22px 18px;
+  background: rgba(8, 14, 20, 0.90);
+  border-radius: 10px;
+}
+.screen.hidden { display: none; }
+.screen.scrolls { justify-content: flex-start; overflow-y: auto; gap: 10px; }
+
+h1 {
+  margin: 0;
+  font-size: 46px;
+  line-height: 1.05;
+  letter-spacing: 2px;
+  color: #ffe14d;
+  text-shadow: 0 4px 0 #b3560a, 0 8px 14px rgba(0,0,0,.6);
+}
+h1.small-title { font-size: 34px; }
+
+h2 {
+  margin: 0;
+  font-size: 30px;
+  color: #ffe14d;
+  text-shadow: 0 3px 0 #b3560a;
+}
+
+h3 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #9fb2c4;
+}
+
+.sub { margin: 0; font-size: 17px; color: #d6e6ff; }
+.tiny { margin: 0; font-size: 12px; color: #9fb2c4; line-height: 1.5; }
+.joke { margin: 0; font-size: 13px; color: #ffd98a; line-height: 1.4; min-height: 36px; font-style: italic; }
+
+/* ---- Buttons ---- */
+button.big, button.small {
+  pointer-events: auto;
+  font-family: inherit;
+  font-weight: bold;
+  color: #20130a;
+  background: linear-gradient(#ffd93d, #f2a03a);
+  border: 0;
+  border-bottom: 5px solid #a95f12;
+  border-radius: 14px;
+  cursor: pointer;
+}
+button.big { font-size: 24px; letter-spacing: 1px; padding: 13px 34px; }
+button.small { font-size: 15px; padding: 8px 18px; border-bottom-width: 3px; }
+button.big:active, button.small:active { transform: translateY(3px); border-bottom-width: 2px; }
+button.ghost { background: rgba(255,255,255,.10); color: #cfe0f0; border-bottom-color: rgba(255,255,255,.15); }
+button.danger { background: linear-gradient(#ff6b5c, #d63b2c); color: #fff; border-bottom-color: #8c1f13; font-size: 18px; }
+
+.buttonrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* ---- Boss ladder ---- */
+.list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 380px; }
+
+.bossrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  background: rgba(255,255,255,.05);
+  color: #fff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bossrow .face { font-size: 30px; line-height: 1; }
+.bossrow .info { flex: 1; }
+.bossrow .nm { font-size: 17px; font-weight: bold; }
+.bossrow .tg { font-size: 12px; color: #9fb2c4; }
+.bossrow.next { border-color: #ffe14d; background: rgba(255,225,77,.12); }
+.bossrow.beaten .nm { color: #7cf07c; }
+.bossrow.locked { opacity: .40; cursor: not-allowed; }
+
+/* ---- Character / bat tiles ---- */
+.tiles { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+.tile {
+  width: 74px;
+  padding: 8px 4px;
+  border: 2px solid rgba(255,255,255,.14);
+  border-radius: 12px;
+  background: rgba(255,255,255,.05);
+  color: #fff;
+  font-family: inherit;
+  cursor: pointer;
+}
+.tile .face { font-size: 26px; line-height: 1.1; }
+.tile .nm { font-size: 10px; line-height: 1.2; margin-top: 3px; color: #cfe0f0; }
+.tile.on { border-color: #ffe14d; background: rgba(255,225,77,.16); }
+.tile.locked { opacity: .35; cursor: not-allowed; }
+.tile.locked .face { filter: grayscale(1); }
+
+/* ---- Boss card on the select screen ---- */
+.bosscard {
+  width: 100%;
+  max-width: 380px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 2px solid rgba(255,225,77,.35);
+}
+.bosscard .who { font-size: 20px; font-weight: bold; color: #ffe14d; }
+.bosscard .blurb { font-size: 12px; color: #cfe0f0; line-height: 1.45; margin-top: 4px; }
+.bosscard .goal { font-size: 15px; color: #7cf07c; font-weight: bold; margin-top: 6px; }
+
+/* ---- Round over ---- */
+#round-stats { font-size: 17px; line-height: 1.7; color: #eaf3ff; }
+#round-stats .big-num { display: block; font-size: 42px; font-weight: bold; color: #7cf07c; }
+#round-stats .big-num.miss { color: #ff8b7a; }
+
+#round-extra { font-size: 14px; color: #ffd98a; line-height: 1.5; max-width: 340px; }
+#round-extra .unlock {
+  display: block;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(124,240,124,.12);
+  border: 2px solid rgba(124,240,124,.4);
+  color: #fff;
+}
+#round-extra .unlock b { color: #7cf07c; }
+
+#victory-text { font-size: 15px; line-height: 1.6; color: #eaf3ff; max-width: 340px; }

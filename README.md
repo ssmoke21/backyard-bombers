@@ -80,6 +80,45 @@ Landmarks are split in two: `NEAR_LANDMARKS` (the dribblers and bloops, shared
 by every field) and each field's own `landmarks` list for anything that clears
 its fence. A field's list should start at its fence distance.
 
+## Versus mode
+
+**👥 VERSUS** on the title screen. 2–4 people on one device, taking turns —
+each player gets a full 10 pitches, then passes it on. Type names at the start,
+pick your character and bat before each turn, and there's a ranked results table
+at the end with a 🏆 for the winner.
+
+Everybody gets **all four characters and every bat except the Frozen Fish**,
+whether or not anyone has touched single player. The Frozen Fish is the one
+thing you have to earn — beat the ladder in single player and it shows up in
+versus too. To just hand it out, set `versusLocked: false` on it in `content.js`.
+
+Versus never touches your single-player progress: no unlocks, no ladder
+movement, and your best scores stay yours.
+
+Settings in `VERSUS` (in `content.js`):
+
+- `bossMode` — `"sameForAll"` (default: one random boss, everybody faces them,
+  which is fair) or `"randomEachTurn"` (everybody draws their own, which is
+  chaotic and a bit unfair)
+- `minPlayers` / `maxPlayers` / `maxNameLength` / `defaultNames`
+
+### A note on gear
+
+The character/bat combo matters a lot, and that's deliberate — but here's the
+measured shape of it, so you can tune if you want. Average round vs Pop:
+
+| Combo | Sharp timing | Sloppy (a kid) | Flailing |
+|---|---|---|---|
+| Batter + Regular | 4,719 | 3,711 | 2,546 |
+| Zeus + Pool Noodle | 2,575 | 2,575 | **2,451** |
+| Batter + Banana | 6,498 | 4,268 | 1,983 |
+| Georgia + Banana | 9,261 | 5,130 | 2,983 |
+
+The Pool Noodle looks weak until you look at the last column: it barely drops at
+all, and it never whiffs. That's the point — it's the floor for a young player.
+Georgia + Banana Peel is the strongest combo at every skill level; if it wins
+every game at your house, turn down `chaosJackpot` on Georgia in `content.js`.
+
 ## Pausing
 
 The ⏸ button in the corner, or the **P** / **Esc** key. Resume, restart the
@@ -105,8 +144,10 @@ In `sound.js`:
 
 - **Phase 1 — core loop** ✅
 - **Phase 2 — bosses, characters, unlocks, saving** ✅
-- **Phase 3 — sound, particles, crowd, announcer, landmarks, screen shake** ✅ (you are here)
-- Phase 4 — versus mode
+- **Phase 3 — sound, particles, crowd, announcer, landmarks, screen shake** ✅
+- **Phase 4 — versus mode** ✅ (all four phases done)
+
+Plus, since: a pause screen and a different field for every boss.
 
 ## Saving
 

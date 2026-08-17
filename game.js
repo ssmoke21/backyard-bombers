@@ -162,10 +162,14 @@ function makePlayer(name) {
     bestHit: 0,
     hitCount: 0,          // used by the baguette, which crumbles as you go
     swings: [],
+    played: false,        // versus: has this player had their turn yet
   };
 }
 
-let players = [makePlayer("Player 1")];
+// Single player always uses this same object, so your character and bat choice
+// survives a trip through versus mode and back.
+const soloPlayer = makePlayer("Player 1");
+let players = [soloPlayer];
 let currentPlayer = 0;
 function P() { return players[currentPlayer]; }
 function character() { return CHARACTERS[P().characterId]; }
@@ -173,6 +177,9 @@ function bat() { return BATS[P().batId]; }
 
 const game = {
   state: "menu",          // menu | windup | incoming | flight | result | between
+  mode: "solo",           // solo | versus
+  turn: 0,                // versus: whose turn it is
+  playerCount: 2,         // versus: how many are playing
   bossId: BOSS_LADDER[0],
   pitcherIndex: 0,        // which pitcher of the boss is currently on the mound
   pitchNumber: 0,
@@ -267,10 +274,15 @@ function updateCornerButton() {
 function pauseGame() {
   if (game.paused || game.state === "menu") return;
   game.paused = true;
+  const versus = game.mode === "versus";
   document.getElementById("pause-info").innerHTML =
+    (versus ? "<b>" + escapeHtml(P().name) + "</b> — turn " + (game.turn + 1) + " of " + game.playerCount + "<br>" : "") +
     "Pitch <b>" + game.pitchNumber + " / " + CONFIG.pitchesPerRound + "</b> against <b>" + boss().name + "</b><br>" +
-    "<b>" + Math.round(P().totalDistance).toLocaleString() + " ft</b> of <b>" + boss().target.toLocaleString() + " ft</b>";
+    "<b>" + Math.round(P().totalDistance).toLocaleString() + " ft</b>" +
+    (versus ? " so far" : " of <b>" + boss().target.toLocaleString() + " ft</b>");
   document.getElementById("btn-pause-sound").textContent = SOUND.enabled ? "🔊 SOUND" : "🔇 MUTED";
+  document.getElementById("btn-pause-restart").textContent = versus ? "RESTART TURN" : "RESTART ROUND";
+  document.getElementById("btn-pause-quit").textContent = versus ? "QUIT THE GAME" : "QUIT TO LINEUP";
   document.getElementById("screen-pause").classList.remove("hidden");
   updateCornerButton();
 }
@@ -318,27 +330,49 @@ function buildLadder() {
   showScreen("screen-ladder");
 }
 
+// ---- What you're allowed to pick ----------------------------------------
+// Versus hands out all four characters and every bat except the one you have
+// to earn, so nobody is locked out just because somebody else did the work.
+function availableCharacters() {
+  if (game.mode === "versus") return Object.keys(CHARACTERS);
+  return save.characters;
+}
+function availableBats() {
+  if (game.mode !== "versus") return save.bats;
+  return Object.keys(BATS).filter(function (id) {
+    return !BATS[id].versusLocked || save.bats.indexOf(id) >= 0;
+  });
+}
+
 // ---- Character + bat select ---------------------------------------------
 function openSelect() {
   const b = boss();
-  document.getElementById("select-boss").innerHTML =
-    "<div class='who'>" + b.pitchers.map(function (p) { return p.emoji; }).join(" ") + "  " + b.name + "</div>" +
-    "<div class='blurb'>" + b.blurb + "</div>" +
-    "<div class='goal'>Beat " + b.target.toLocaleString() + " ft in 10 pitches" +
-    (game.replay ? "  (replay)" : "") + "</div>";
+  const versus = game.mode === "versus";
 
-  buildTiles("pick-characters", CHARACTERS, save.characters, P().characterId, function (id) {
+  document.getElementById("select-boss").innerHTML =
+    (versus
+      ? "<div class='who'>" + P().name + "  —  turn " + (game.turn + 1) + " of " + game.playerCount + "</div>" +
+        "<div class='blurb'>Pitching: " + b.pitchers.map(function (p) { return p.emoji; }).join(" ") +
+        " <b>" + b.name + "</b> at " + field().name + ".<br>" + b.blurb + "</div>" +
+        "<div class='goal'>Hit it as far as you can in 10 pitches</div>"
+      : "<div class='who'>" + b.pitchers.map(function (p) { return p.emoji; }).join(" ") + "  " + b.name + "</div>" +
+        "<div class='blurb'>" + b.blurb + "</div>" +
+        "<div class='goal'>Beat " + b.target.toLocaleString() + " ft in 10 pitches" +
+        (game.replay ? "  (replay)" : "") + "</div>");
+
+  buildTiles("pick-characters", CHARACTERS, availableCharacters(), P().characterId, function (id) {
     P().characterId = id;
     openSelect();
   });
   document.getElementById("joke-character").textContent = character().joke;
 
-  buildTiles("pick-bats", BATS, save.bats, P().batId, function (id) {
+  buildTiles("pick-bats", BATS, availableBats(), P().batId, function (id) {
     P().batId = id;
     openSelect();
   });
   document.getElementById("joke-bat").textContent = bat().joke;
 
+  document.getElementById("btn-select-back").textContent = versus ? "← Back" : "← Lineup";
   showScreen("screen-select");
 }
 
@@ -357,8 +391,200 @@ function buildTiles(containerId, table, unlockedList, selectedId, onPick) {
   });
 }
 
+/* ==========================================================================
+   4b. Versus mode - pass and play
+   ========================================================================== */
+
+let versusNames = VERSUS.defaultNames.slice();
+
+function openVersusSetup(keepNames) {
+  game.mode = "versus";
+  if (!keepNames) versusNames = VERSUS.defaultNames.slice();
+
+  // Player count buttons
+  const counts = document.getElementById("versus-counts");
+  counts.innerHTML = "";
+  for (let n = VERSUS.minPlayers; n <= VERSUS.maxPlayers; n++) {
+    const b = document.createElement("button");
+    b.className = "count" + (n === game.playerCount ? " on" : "");
+    b.textContent = n;
+    b.addEventListener("click", (function (count) {
+      return function () {
+        sfx.click();
+        readVersusNames();
+        game.playerCount = count;
+        openVersusSetup(true);
+      };
+    })(n));
+    counts.appendChild(b);
+  }
+
+  // Name boxes
+  const names = document.getElementById("versus-names");
+  names.innerHTML = "";
+  for (let i = 0; i < game.playerCount; i++) {
+    const row = document.createElement("div");
+    row.className = "namerow";
+    row.innerHTML = "<span class='num'>" + (i + 1) + "</span>";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = VERSUS.maxNameLength;
+    input.value = versusNames[i] || VERSUS.defaultNames[i];
+    input.placeholder = VERSUS.defaultNames[i];
+    input.autocomplete = "off";
+    input.dataset.index = i;
+    row.appendChild(input);
+    names.appendChild(row);
+  }
+
+  showScreen("screen-versus-setup");
+}
+
+function readVersusNames() {
+  document.querySelectorAll("#versus-names input").forEach(function (input) {
+    const i = Number(input.dataset.index);
+    const v = input.value.trim();
+    versusNames[i] = v || VERSUS.defaultNames[i];
+  });
+}
+
+function startVersusGame() {
+  readVersusNames();
+  players = [];
+  for (let i = 0; i < game.playerCount; i++) {
+    const p = makePlayer(versusNames[i]);
+    p.played = false;
+    players.push(p);
+  }
+  currentPlayer = 0;
+  game.turn = 0;
+  game.mode = "versus";
+  game.replay = true;                 // versus never touches the ladder
+  if (VERSUS.bossMode === "sameForAll") game.bossId = pick(BOSS_LADDER);
+  showPassScreen();
+}
+
+// "Pass the phone to Ana"
+function showPassScreen() {
+  if (VERSUS.bossMode === "randomEachTurn") game.bossId = pick(BOSS_LADDER);
+  currentPlayer = game.turn;
+  const b = boss();
+  document.getElementById("pass-who").innerHTML =
+    "<div class='bigface'>" + CHARACTERS[P().characterId].emoji + "</div>" +
+    "<div class='whoname'>" + escapeHtml(P().name) + "</div>" +
+    "<div class='whoturn'>you're up — turn " + (game.turn + 1) + " of " + game.playerCount + "</div>" +
+    "<div class='whoboss'>Pitching: " + b.pitchers.map(function (p) { return p.emoji; }).join(" ") +
+    " <b>" + b.name + "</b><br>at " + field().name + "</div>";
+  showScreen("screen-versus-pass");
+}
+
+// One player has finished their ten pitches.
+function endTurn() {
+  const p = P();
+  p.played = true;
+  const last = game.turn >= game.playerCount - 1;
+
+  document.getElementById("vturn-title").textContent = escapeHtml(p.name) + "'S TURN IS OVER";
+  document.getElementById("vturn-stats").innerHTML =
+    "<span class='big-num'>" + Math.round(p.totalDistance).toLocaleString() + " ft</span>" +
+    "with the " + BATS[p.batId].emoji + " " + BATS[p.batId].name + "<br>" +
+    "Longest bomb: <b>" + Math.round(p.bestHit) + " ft</b>";
+
+  const done = players.filter(function (x) { return x.played; })
+                      .slice().sort(function (a, b) { return b.totalDistance - a.totalDistance; });
+  document.getElementById("vturn-standings").innerHTML = done.length > 1
+    ? "So far:<br>" + done.map(function (x, i) {
+        return (i + 1) + ". " + escapeHtml(x.name) + " — " + Math.round(x.totalDistance).toLocaleString() + " ft";
+      }).join("<br>")
+    : "";
+
+  document.getElementById("btn-vturn-next").textContent =
+    last ? "SEE THE SCORES" : "PASS TO " + players[game.turn + 1].name.toUpperCase();
+  showScreen("screen-versus-turn");
+}
+
+function nextTurn() {
+  if (game.turn >= game.playerCount - 1) { showVersusResults(); return; }
+  game.turn++;
+  showPassScreen();
+}
+
+function showVersusResults() {
+  const ranked = players.slice().sort(function (a, b) { return b.totalDistance - a.totalDistance; });
+  const winner = ranked[0];
+  const tied = ranked.filter(function (p) { return p.totalDistance === winner.totalDistance; });
+
+  document.getElementById("versus-winner").innerHTML = tied.length > 1
+    ? "🏆 IT'S A TIE!<div class='sub'>" + tied.map(function (p) { return escapeHtml(p.name); }).join(" and ") + "</div>"
+    : "🏆 " + escapeHtml(winner.name) + " WINS!<div class='sub'>" +
+      Math.round(winner.totalDistance).toLocaleString() + " ft, longest bomb " +
+      Math.round(winner.bestHit) + " ft</div>";
+
+  let rows = "<table class='scoretable'><tr><th></th><th>WHO</th><th></th><th style='text-align:right'>TOTAL</th><th style='text-align:right'>BEST</th></tr>";
+  ranked.forEach(function (p, i) {
+    const isWin = p.totalDistance === winner.totalDistance;
+    rows += "<tr class='" + (isWin ? "win" : "") + "'>" +
+      "<td class='rk'>" + (isWin ? "🏆" : (i + 1)) + "</td>" +
+      "<td class='nm'>" + escapeHtml(p.name) + "</td>" +
+      "<td class='kit'>" + CHARACTERS[p.characterId].emoji + BATS[p.batId].emoji + "</td>" +
+      "<td class='ft'>" + Math.round(p.totalDistance).toLocaleString() + "</td>" +
+      "<td class='lg'>" + Math.round(p.bestHit) + "</td></tr>";
+  });
+  rows += "</table>";
+  document.getElementById("versus-table").innerHTML = rows;
+
+  sfx.win();
+  showScreen("screen-versus-results");
+}
+
+// Same players, fresh scores
+function replayVersus() {
+  players.forEach(function (p) {
+    p.totalDistance = 0; p.bestHit = 0; p.hitCount = 0; p.swings = []; p.played = false;
+  });
+  game.turn = 0;
+  currentPlayer = 0;
+  if (VERSUS.bossMode === "sameForAll") game.bossId = pick(BOSS_LADDER);
+  showPassScreen();
+}
+
+// Best total among the players who have already had their turn, or null if
+// you're the first one up.
+function versusLeader() {
+  let best = null;
+  for (let i = 0; i < players.length; i++) {
+    if (players[i].played && (best === null || players[i].totalDistance > best)) {
+      best = players[i].totalDistance;
+    }
+  }
+  return best;
+}
+
+// Back to single player
+function leaveVersus() {
+  game.mode = "solo";
+  game.replay = false;
+  players = [soloPlayer];
+  currentPlayer = 0;
+  game.bossId = BOSS_LADDER[Math.min(save.ladderIndex, BOSS_LADDER.length - 1)];
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
 // ---- Settings ------------------------------------------------------------
+// Settings can be opened from several places, so remember where to go back to.
+let settingsBackTo = "screen-ladder";
+
 function openSettings() {
+  const vis = Array.prototype.find.call(document.querySelectorAll(".screen"), function (s) {
+    return !s.classList.contains("hidden");
+  });
+  if (vis && vis.id !== "screen-settings") settingsBackTo = vis.id;
+
   const sb = document.getElementById("btn-sound");
   sb.textContent = SOUND.enabled ? "🔊  SOUND: ON" : "🔇  SOUND: OFF";
   document.getElementById("settings-info").innerHTML =
@@ -381,18 +607,43 @@ function onTap(id, fn) {
   });
 }
 
-onTap("btn-play", buildLadder);
+onTap("btn-play", function () { leaveVersus(); buildLadder(); });
 onTap("btn-ladder-back", function () { showScreen("screen-title"); });
-onTap("btn-select-back", buildLadder);
+onTap("btn-select-back", function () {
+  if (game.mode === "versus") showPassScreen();
+  else buildLadder();
+});
 onTap("btn-start", startRound);
 onTap("btn-victory-ok", buildLadder);
-onTap("btn-settings-back", buildLadder);
+onTap("btn-settings-back", function () {
+  if (settingsBackTo === "screen-versus-setup") openVersusSetup(true);
+  else if (settingsBackTo === "screen-versus-results") showVersusResults();
+  else if (settingsBackTo === "screen-versus-pass") showPassScreen();
+  else if (settingsBackTo === "screen-versus-turn") showScreen("screen-versus-turn");
+  else if (settingsBackTo === "screen-title") showScreen("screen-title");
+  else if (settingsBackTo === "screen-select") openSelect();
+  else buildLadder();
+});
+
+// Versus
+onTap("btn-versus", function () { openVersusSetup(false); });
+onTap("btn-versus-back", function () { leaveVersus(); showScreen("screen-title"); });
+onTap("btn-versus-start", startVersusGame);
+onTap("btn-pass-ready", openSelect);
+onTap("btn-vturn-next", nextTurn);
+onTap("btn-versus-again", replayVersus);
+onTap("btn-versus-newplayers", function () { openVersusSetup(true); });
+onTap("btn-versus-title", function () { leaveVersus(); showScreen("screen-title"); });
 onTap("btn-reset", function () { resetSave(); writeSave(); openSettings(); });
 onTap("btn-sound", function () { setSound(!SOUND.enabled); openSettings(); });
 
 onTap("btn-resume", resumeGame);
 onTap("btn-pause-restart", function () { resumeGame(); startRound(); });
-onTap("btn-pause-quit", function () { resumeGame(); buildLadder(); });
+onTap("btn-pause-quit", function () {
+  resumeGame();
+  if (game.mode === "versus") { leaveVersus(); showScreen("screen-title"); }
+  else buildLadder();
+});
 document.getElementById("btn-pause-sound").addEventListener("click", function () {
   setSound(!SOUND.enabled);
   sfx.click();
@@ -526,6 +777,8 @@ function nextPitch() {
 }
 
 function endRound() {
+  if (game.mode === "versus") { endTurn(); return; }
+
   const p = P();
   const b = boss();
   const won = p.totalDistance >= b.target;
@@ -631,7 +884,14 @@ function pressUp() {
 canvas.addEventListener("pointerdown", function (e) { e.preventDefault(); wakeAudio(); pressDown(); });
 window.addEventListener("pointerup", function () { pressUp(); });
 window.addEventListener("pointercancel", function () { pressUp(); });
+// Somebody typing their name into a box is not trying to swing a bat.
+function typingInABox(e) {
+  const t = e.target;
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+}
+
 window.addEventListener("keydown", function (e) {
+  if (typingInABox(e)) return;
   if (e.code === "Space") { e.preventDefault(); if (!e.repeat) pressDown(); }
   if (e.code === "KeyP" || e.code === "Escape") {
     e.preventDefault();
@@ -639,6 +899,7 @@ window.addEventListener("keydown", function (e) {
   }
 });
 window.addEventListener("keyup", function (e) {
+  if (typingInABox(e)) return;
   if (e.code === "Space") { e.preventDefault(); pressUp(); }
 });
 
@@ -713,7 +974,7 @@ function doSwing() {
   }
 
   // ---- Distance --------------------------------------------------------
-  const chaosBonus = ch.chaos > 0 ? georgiaBonus(ch.chaos) : 1;
+  const chaosBonus = ch.chaos > 0 ? georgiaBonus(ch) : 1;
   const luck = CONFIG.luckMin + Math.random() * (CONFIG.luckMax - CONFIG.luckMin);
   const sweetBonus = (sweet && bt.sweetBonus) ? bt.sweetBonus : 1;
 
@@ -770,9 +1031,9 @@ function doSwing() {
 }
 
 // Georgia: usually a small nudge, occasionally completely unhinged.
-function georgiaBonus(chaos) {
-  if (Math.random() < 0.12) return 1 + chaos * 3.0;
-  return 1 + (Math.random() * 2 - 0.7) * chaos;
+function georgiaBonus(ch) {
+  if (Math.random() < (ch.chaosJackpot || 0)) return 1 + ch.chaos * (ch.chaosJackpotBonus || 3);
+  return 1 + (Math.random() * 2 - 0.7) * ch.chaos;
 }
 
 function launchBall(targetDist, angleDeg, quality, accuracy) {
@@ -1501,6 +1762,7 @@ function drawLick() {
 function drawHUD() {
   if (game.state === "menu") return;
   const p = P();
+  const versus = game.mode === "versus";
   const target = boss().target;
 
   ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -1513,25 +1775,32 @@ function drawHUD() {
   ctx.fillText("Pitch " + game.pitchNumber + "/" + CONFIG.pitchesPerRound, 12, 17);
   ctx.fillStyle = "#9fb2c4";
   ctx.font = "12px Verdana";
-  ctx.fillText("vs " + pitcher().name, 12, 37);
+  // In versus the important thing is whose turn it is, not who's pitching.
+  ctx.fillText(versus
+    ? p.name + "  (" + (game.turn + 1) + "/" + game.playerCount + ")"
+    : "vs " + pitcher().name, 12, 37);
 
   // Right-aligned block stops short of the pause button in the corner.
   const rightEdge = W - 58;
-  const beating = p.totalDistance >= target;
+  const leader = versus ? versusLeader() : null;
+  const beating = versus ? (leader === null || p.totalDistance >= leader) : (p.totalDistance >= target);
   ctx.textAlign = "right";
   ctx.fillStyle = beating ? "#7cf07c" : "#ffffff";
   ctx.font = "bold 18px Verdana";
   ctx.fillText(Math.round(p.totalDistance).toLocaleString() + " ft", rightEdge, 17);
   ctx.fillStyle = "#9fb2c4";
   ctx.font = "12px Verdana";
-  ctx.fillText("need " + target.toLocaleString(), rightEdge, 37);
+  ctx.fillText(versus
+    ? (leader === null ? "set the pace" : "beat " + Math.round(leader).toLocaleString())
+    : "need " + target.toLocaleString(), rightEdge, 37);
 
-  // Progress bar toward the boss target
+  // Progress bar: toward the boss target, or toward whoever is winning
+  const goal = versus ? (leader || 1) : target;
   const barW = W - 24;
   ctx.fillStyle = "rgba(255,255,255,0.15)";
   ctx.fillRect(12, 47, barW, 4);
   ctx.fillStyle = beating ? "#7cf07c" : "#ffe14d";
-  ctx.fillRect(12, 47, barW * clamp(p.totalDistance / target, 0, 1), 4);
+  ctx.fillRect(12, 47, barW * clamp(p.totalDistance / goal, 0, 1), 4);
 
   if (game.state === "flight") {
     ctx.textAlign = "center";

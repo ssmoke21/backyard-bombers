@@ -119,6 +119,11 @@ const CHARACTERS = {
     emoji: "🐩",
     joke: "Brown, bouncy, full of love. Every swing is a surprise, including to her.",
     chargeSpeed: 1.10, windowMod: 1.00, powerMod: 1.00, chaos: 0.55, dropChance: 0.12, mouth: true,
+    // Every so often she just launches one into space. Georgia paired with the
+    // Banana Peel is the strongest combo in the game at every skill level - turn
+    // these two down if that combo is winning every versus game at your house.
+    chaosJackpot: 0.12,       // chance of the big one
+    chaosJackpotBonus: 3.0,   // how big (multiplied by `chaos`)
   },
 };
 
@@ -161,6 +166,9 @@ const BATS = {
   frozenFish: {
     name: "Frozen Fish", emoji: "🐟",
     joke: "Cold, heavy, and every so often it simply leaves. No hard feelings.",
+    // The one bat you have to actually earn. Beat the whole ladder in single
+    // player and it turns up in versus too. Set this to false to just hand it out.
+    versusLocked: true,
     power: 1.25, windowMod: 0.95, accuracy: 0.85, slipChance: 0.16,
     color: "#7fd3e0", width: 1.6, length: 0.85,
   },
@@ -441,6 +449,26 @@ const BOSSES = {
    The order you fight them in, and therefore the order bats unlock in.
    ========================================================================== */
 const BOSS_LADDER = ["nana", "pop", "kids", "matt", "dogs"];
+
+
+/* ==========================================================================
+   VERSUS - pass-and-play for 2 to 4 people on one device.
+   Everybody gets all four characters and (nearly) every bat straight away,
+   no matter how far anyone has got in single player.
+   ========================================================================== */
+
+const VERSUS = {
+  minPlayers: 2,
+  maxPlayers: 4,
+  maxNameLength: 10,
+  defaultNames: ["Player 1", "Player 2", "Player 3", "Player 4"],
+
+  // Who's pitching?
+  //   "sameForAll"     - one random boss, everybody faces them. Fair.
+  //   "randomEachTurn" - every player draws their own boss. Chaotic, and a bit
+  //                      unfair if one person gets Nana and the next gets the dogs.
+  bossMode: "sameForAll",
+};
 
 
 /* ==========================================================================

@@ -22,7 +22,46 @@
       <h1>BACKYARD<br>BOMBERS</h1>
       <p class="sub">Ten pitches. Five bosses. Some very silly bats.</p>
       <button class="big" id="btn-play">PLAY</button>
+      <button class="big alt" id="btn-versus">👥 VERSUS</button>
       <p class="tiny">Hold anywhere to charge. Let go to swing.<br>(Desktop: hold the SPACEBAR)</p>
+    </div>
+
+    <!-- ---------------- VERSUS SETUP ---------------- -->
+    <div class="screen hidden scrolls" id="screen-versus-setup">
+      <h2>VERSUS</h2>
+      <p class="tiny">Pass the device around.<br>Everybody gets ten pitches against the same pitcher.</p>
+      <h3>HOW MANY PLAYERS?</h3>
+      <div class="buttonrow" id="versus-counts"></div>
+      <h3>NAMES</h3>
+      <div id="versus-names" class="names"></div>
+      <button class="big" id="btn-versus-start">START</button>
+      <button class="small ghost" id="btn-versus-back">← Title</button>
+    </div>
+
+    <!-- ---------------- VERSUS: PASS THE DEVICE ---------------- -->
+    <div class="screen hidden" id="screen-versus-pass">
+      <div id="pass-who"></div>
+      <button class="big" id="btn-pass-ready">I'M READY</button>
+    </div>
+
+    <!-- ---------------- VERSUS: TURN OVER ---------------- -->
+    <div class="screen hidden scrolls" id="screen-versus-turn">
+      <h2 id="vturn-title">TURN OVER</h2>
+      <div id="vturn-stats"></div>
+      <div id="vturn-standings"></div>
+      <button class="big" id="btn-vturn-next">NEXT</button>
+    </div>
+
+    <!-- ---------------- VERSUS: FINAL SCORES ---------------- -->
+    <div class="screen hidden scrolls" id="screen-versus-results">
+      <h1 class="small-title">FINAL<br>SCORES</h1>
+      <div id="versus-winner"></div>
+      <div id="versus-table"></div>
+      <button class="big" id="btn-versus-again">PLAY AGAIN</button>
+      <div class="buttonrow">
+        <button class="small ghost" id="btn-versus-newplayers">NEW PLAYERS</button>
+        <button class="small ghost" id="btn-versus-title">← Title</button>
+      </div>
     </div>
 
     <!-- ---------------- BOSS LADDER ---------------- -->

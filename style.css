@@ -194,3 +194,85 @@ button.danger { background: linear-gradient(#ff6b5c, #d63b2c); color: #fff; bord
 #round-extra .unlock b { color: #7cf07c; }
 
 #victory-text { font-size: 15px; line-height: 1.6; color: #eaf3ff; max-width: 340px; }
+
+/* ---- Versus ---- */
+button.big.alt {
+  background: linear-gradient(#7ad3ff, #2f9ad6);
+  border-bottom-color: #14618f;
+  color: #06242f;
+  font-size: 20px;
+  padding: 11px 28px;
+}
+
+button.count {
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: bold;
+  width: 58px;
+  padding: 10px 0;
+  border: 2px solid rgba(255,255,255,.16);
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  cursor: pointer;
+}
+button.count.on { border-color: #ffe14d; background: rgba(255,225,77,.18); color: #ffe14d; }
+
+.names { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; }
+
+.namerow { display: flex; align-items: center; gap: 10px; }
+.namerow .num {
+  width: 26px; height: 26px; flex: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  font-size: 13px; font-weight: bold; line-height: 26px; text-align: center;
+}
+.namerow input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 17px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 2px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  /* the rest of the page blocks selection and touch - text fields must not */
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+}
+.namerow input:focus { outline: none; border-color: #ffe14d; }
+
+#pass-who .whoname {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffe14d;
+  text-shadow: 0 3px 0 #b3560a;
+  line-height: 1.1;
+  word-break: break-word;
+}
+#pass-who .whoturn { font-size: 17px; color: #d6e6ff; margin-top: 6px; }
+#pass-who .whoboss { font-size: 14px; color: #9fb2c4; margin-top: 14px; line-height: 1.5; }
+#pass-who .bigface { font-size: 54px; }
+
+#vturn-stats { font-size: 17px; line-height: 1.7; color: #eaf3ff; }
+#vturn-stats .big-num { display: block; font-size: 40px; font-weight: bold; color: #7cf07c; }
+#vturn-standings { font-size: 13px; color: #9fb2c4; line-height: 1.7; }
+
+.scoretable { width: 100%; max-width: 360px; border-collapse: collapse; font-size: 14px; }
+.scoretable th {
+  font-size: 11px; letter-spacing: 1px; color: #9fb2c4; text-align: left;
+  padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,.15);
+}
+.scoretable td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.scoretable .rk { width: 26px; color: #9fb2c4; font-weight: bold; }
+.scoretable .nm { font-weight: bold; word-break: break-word; }
+.scoretable .kit { font-size: 17px; white-space: nowrap; }
+.scoretable .ft { text-align: right; font-weight: bold; color: #7cf07c; white-space: nowrap; }
+.scoretable .lg { text-align: right; color: #bcd4e8; white-space: nowrap; }
+.scoretable tr.win td { background: rgba(255,225,77,.13); }
+.scoretable tr.win .nm { color: #ffe14d; }
+
+#versus-winner { font-size: 19px; color: #ffe14d; font-weight: bold; line-height: 1.4; }
+#versus-winner .sub { font-size: 13px; color: #cfe0f0; font-weight: normal; margin-top: 4px; }

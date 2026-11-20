@@ -10,3 +10,6 @@ desktop.ini
 
 # Nothing here needs installing, but just in case
 node_modules/
+
+# Another project that happens to live in this folder - not part of the game
+manlympics/

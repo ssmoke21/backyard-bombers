@@ -744,6 +744,14 @@ const JUICE = {
 
   // The crowd itself is defined per-field (see FIELDS). They jump whenever a
   // ball clears that field's fence.
+
+  // ---- Performance safety net ----
+  // Emoji are expensive to draw. If the device can't keep up, the game quietly
+  // thins out the particles rather than getting choppy. Set adaptive to false
+  // to always draw the full amount no matter what.
+  adaptive: true,
+  slowFrameMs: 14,          // a draw costing more than this counts as struggling
+  minParticleScale: 0.25,   // never thin out below a quarter of the particles
 };
 
 // What flies off each bat when it connects.

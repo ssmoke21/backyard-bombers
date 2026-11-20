@@ -9,15 +9,170 @@ const H = CONFIG.height;
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+/* ==========================================================================
+   EMOJI SPRITE CACHE
+   --------------------------------------------------------------------------
+   Drawing an emoji with fillText is brutally slow - roughly 10x the cost of a
+   normal letter - and worse, every distinct font size makes the browser
+   re-resolve the colour-emoji font from scratch. Particles all have random
+   sizes, so nothing was ever cached and a busy frame cost 30-50ms.
+
+   So: each emoji is rendered ONCE into a little offscreen canvas per size
+   bucket, and from then on it is a plain image blit. Sizes are rounded into
+   buckets so the cache actually gets hits.
+   ========================================================================== */
+
+const spriteCache = new Map();
+const SPRITE_CACHE_MAX = 520;   // one field needs ~380; see the eviction below
+let pixelScale = 1;              // device pixels per game pixel (set in resize)
+
+function spriteBucket(size) {
+  // Fine steps while small, coarser when big - keeps the cache small without
+  // anyone being able to see the rounding.
+  if (size < 40) return Math.max(8, Math.round(size / 4) * 4);
+  if (size < 96) return Math.round(size / 8) * 8;
+  return Math.round(size / 16) * 16;
+}
+
+function emojiSprite(ch, size) {
+  const s = spriteBucket(size);
+  const key = ch + "|" + s;
+  let sp = spriteCache.get(key);
+  if (sp) return sp;
+
+  // Don't let the cache grow forever. A Map keeps insertion order, so dropping
+  // from the front throws away the oldest entries rather than wiping the lot
+  // (a full wipe would just make us re-render everything next frame).
+  if (spriteCache.size > SPRITE_CACHE_MAX) {
+    const drop = Math.ceil(SPRITE_CACHE_MAX * 0.25);
+    const it = spriteCache.keys();
+    for (let i = 0; i < drop; i++) spriteCache.delete(it.next().value);
+  }
+
+    // 1.35 is measured, not guessed: the fattest emoji in the game (a slice of
+  // cake) needs 1.25x its font size, and everything else needs less.
+  const dim = Math.ceil(s * 1.35);
+  sp = document.createElement("canvas");
+  sp.width = sp.height = Math.max(1, Math.ceil(dim * pixelScale));
+  const g = sp.getContext("2d");
+  g.scale(pixelScale, pixelScale);
+  g.font = s + "px serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(ch, dim / 2, dim / 2);
+  sp.dim = dim;
+  spriteCache.set(key, sp);
+  return sp;
+}
+
+/* The very first time an emoji is drawn at a new size it has to be rastered,
+   which costs a few milliseconds. Doing thirty of those on one frame is a
+   visible hitch, so when a round starts we queue up everything that round is
+   going to need and chew through the queue a couple of milliseconds at a time
+   during the wind-up, where nobody can see it. */
+let spriteWarmQueue = [];
+
+function queueWarm(chars, sizes) {
+  for (let i = 0; i < chars.length; i++) {
+    for (let j = 0; j < sizes.length; j++) spriteWarmQueue.push([chars[i], sizes[j]]);
+  }
+}
+
+function warmSpritesForRound() {
+  spriteWarmQueue.length = 0;
+  const f = field();
+  const seen = {};
+
+  // Don't queue the same sprite twice.
+  function want(chars, size) {
+    for (let i = 0; i < chars.length; i++) {
+      const key = chars[i] + "|" + spriteBucket(size);
+      if (seen[key]) continue;
+      seen[key] = 1;
+      spriteWarmQueue.push([chars[i], size]);
+    }
+  }
+
+  // Which balls might turn up this round?
+  const ballEmoji = [];
+  boss().pitchers.forEach(function (p) {
+    p.pitches.forEach(function (id) {
+      const e = PITCHES[id].emoji;
+      if (ballEmoji.indexOf(e) < 0) ballEmoji.push(e);
+    });
+  });
+
+  // The camera zooms all the way out during a ball's flight, so every sprite
+  // sweeps through a range of sizes. Walk that sweep using the SAME formulas
+  // the drawing code uses, rather than guessing - a guess just means a hitch
+  // mid-flight when an unexpected size turns up.
+  const zooms = [1, 0.82, 0.66, 0.52, 0.41, 0.33, 0.27, CONFIG.flightScale / CONFIG.pitchScale];
+  zooms.forEach(function (z) {
+    const camS = CONFIG.pitchScale * z;
+    const sceneryF = camS / CONFIG.flightScale;
+
+    for (let i = 0; i < f.scenery.length; i++) {
+      want(f.scenery[i].items, Math.max(10, f.scenery[i].size * sceneryF));
+    }
+    if (f.crowd) want(f.crowd.emoji, Math.max(9, 26 * sceneryF));
+    boss().pitchers.forEach(function (p) { want([p.emoji], 90 * p.size * z); });
+    want([character().emoji], CONFIG.batterSize * z);
+    want(ballEmoji, Math.max(9, 26 * z + 8));          // ball in flight
+  });
+
+  // The incoming pitch grows from a speck to full size at full zoom.
+  [10, 13, 16, 20, 24, 29, 35, 43, 52, 64, 78].forEach(function (s) { want(ballEmoji, s); });
+
+  // Whatever flies off the bat, plus the sweet-spot sparkles.
+  [11, 14, 18, 22, 26, 30, 36].forEach(function (s) {
+    want(BAT_DEBRIS[P().batId] || BAT_DEBRIS.regular, s);
+    want(["✨", "⭐", "💫"], s);
+  });
+
+  // Nana's dessert parade.
+  if (boss().pitchers.some(function (p) { return p.special === "desserts"; })) {
+    [36, 44, 52, 60, 68].forEach(function (s) { want(DESSERTS, s); });
+  }
+}
+
+// Chew through the warm queue without ever blowing the frame budget.
+function processWarmQueue(budgetMs) {
+  if (!spriteWarmQueue.length) return;
+  const t0 = performance.now();
+  while (spriteWarmQueue.length && performance.now() - t0 < budgetMs) {
+    const job = spriteWarmQueue.pop();
+    emojiSprite(job[0], job[1]);
+  }
+}
+
+// Draw an emoji centred on (x, y). Drop-in replacement for a centred fillText.
+function drawEmoji(ch, x, y, size) {
+  if (size < 3) return;
+  const sp = emojiSprite(ch, size);
+  const d = sp.dim;
+  ctx.drawImage(sp, x - d / 2, y - d / 2, d, d);
+}
+
+// Same, but sitting on a baseline rather than centred (for the batter).
+function drawEmojiBaseline(ch, x, yBaseline, size) {
+  drawEmoji(ch, x, yBaseline - size * 0.36, size);
+}
+
 function resize() {
   const pad = 8;
   const scale = Math.min((window.innerWidth - pad) / W, (window.innerHeight - pad) / H);
-  const dpr = window.devicePixelRatio || 1;
+  // Cap the pixel ratio. Past 2x nobody can see the difference, but the number
+  // of pixels to fill every frame keeps growing.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.style.width = (W * scale) + "px";
   canvas.style.height = (H * scale) + "px";
   canvas.width = Math.round(W * scale * dpr);
   canvas.height = Math.round(H * scale * dpr);
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  // Sprites are baked at device resolution, so they have to be rebuilt when
+  // that changes (window resize, dragging to another monitor).
+  const ps = scale * dpr;
+  if (ps !== pixelScale) { pixelScale = ps; spriteCache.clear(); }
 }
 window.addEventListener("resize", resize);
 resize();
@@ -80,9 +235,15 @@ loadSave();
 
 const particles = [];
 
+// If the device is struggling, thin the particles out instead of dropping
+// frames. 1 = full effects. See JUICE.adaptive in content.js.
+let particleScale = 1;
+let drawAvgMs = 6;
+
 // opts: emoji or color, count, spread, speed, gravity, life, size
 function spawnParticles(x, y, count, opts) {
   opts = opts || {};
+  count = Math.max(1, Math.round(count * particleScale));
   for (let i = 0; i < count; i++) {
     const ang = (opts.angle === undefined ? -Math.PI / 2 : opts.angle)
               + (Math.random() - 0.5) * (opts.spread === undefined ? Math.PI * 1.6 : opts.spread);
@@ -123,13 +284,12 @@ function drawParticles() {
     const fade = 1 - p.life / p.maxLife;
     ctx.globalAlpha = fade;
     if (p.emoji) {
+      const sp = emojiSprite(p.emoji, p.size);
+      const d = sp.dim;
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
-      ctx.font = p.size + "px serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(p.emoji, 0, 0);
+      ctx.drawImage(sp, -d / 2, -d / 2, d, d);
       ctx.restore();
     } else {
       ctx.fillStyle = p.color;
@@ -373,6 +533,7 @@ function openSelect() {
   document.getElementById("joke-bat").textContent = bat().joke;
 
   document.getElementById("btn-select-back").textContent = versus ? "← Back" : "← Lineup";
+  warmSpritesForRound();     // get a head start while they're still choosing
   showScreen("screen-select");
 }
 
@@ -675,6 +836,7 @@ function startRound() {
   game.dropsInARow = 0;
   game.pitcherIndex = 0;
   clearFx();
+  warmSpritesForRound();
   hideScreens();
   wakeAudio();
   nextPitch();
@@ -1487,9 +1649,6 @@ function drawCrowd(baseY, crowd) {
   if (s < 10) return;
   const now = performance.now() / 1000;
   const rows = crowd.rows || 1;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.font = s + "px serif";
   for (let r = 0; r < rows; r++) {
     for (let i = 0; i < crowd.count; i++) {
       const n = r * crowd.count + i;
@@ -1498,7 +1657,7 @@ function drawCrowd(baseY, crowd) {
       const jump = fx.crowdJump > 0
         ? Math.abs(Math.sin((1.6 - fx.crowdJump) * 11 + n * 0.5)) * fx.crowdJump * s * 0.55
         : 0;
-      ctx.fillText(crowd.emoji[n % crowd.emoji.length], x, baseY - r * s * 0.55 + bob - jump);
+      drawEmojiBaseline(crowd.emoji[n % crowd.emoji.length], x, baseY - r * s * 0.55 + bob - jump, s);
     }
   }
 }
@@ -1507,11 +1666,8 @@ function emojiRow(distFeet, list, size) {
   const y = worldY(distFeet, 0);
   if (y < -60 || y > H + 60) return;
   const s = Math.max(10, size * camScale / CONFIG.flightScale);
-  ctx.font = s + "px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
   for (let i = 0; i < list.length; i++) {
-    ctx.fillText(list[i], (i + 0.5) * (W / list.length), y - s * 0.4);
+    drawEmoji(list[i], (i + 0.5) * (W / list.length), y - s * 0.4, s);
   }
 }
 
@@ -1542,13 +1698,7 @@ function drawPitcher() {
     ctx.fill();
   }
 
-  ctx.save();
-  ctx.translate(W / 2 + lean, y - s * 0.45);
-  ctx.font = s + "px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(pit.emoji, 0, 0);
-  ctx.restore();
+  drawEmoji(pit.emoji, W / 2 + lean, y - s * 0.45, s);
 
   const labelY = wall ? y + s * 0.72 : y + 6;
   if (camScale > CONFIG.pitchScale * 0.7) {
@@ -1569,10 +1719,7 @@ function drawPitcher() {
   // Georgia sprinting the ball at you
   if (fx.charge && game.state === "incoming") {
     const t = clamp(ball.t, 0, 1);
-    ctx.font = (60 + 70 * t) + "px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("🐩", W / 2 + Math.sin(ball.t * 14) * 26, lerp(y, CONFIG.plateY - 90, t));
+    drawEmoji("🐩", W / 2 + Math.sin(ball.t * 14) * 26, lerp(y, CONFIG.plateY - 90, t), 60 + 70 * t);
   }
 }
 
@@ -1621,10 +1768,7 @@ function drawBall() {
       ctx.stroke();
     }
 
-    ctx.font = size + "px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(pitch.emoji, worldX(ball.side), y);
+    drawEmoji(pitch.emoji, worldX(ball.side), y, size);
     return;
   }
 
@@ -1640,19 +1784,14 @@ function drawBall() {
     ctx.ellipse(bx, shadowY, size * 0.35, size * 0.14, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.font = size + "px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(PITCHES[ball.pitchId].emoji, bx, by);
+  drawEmoji(PITCHES[ball.pitchId].emoji, bx, by, size);
 
   // Dottie in mid-heist
   if (fx.chaseCaught > 0) {
-    ctx.font = (size * 2.2) + "px serif";
-    ctx.fillText("🐕", bx + size, by + size * 0.4);
+    drawEmoji("🐕", bx + size, by + size * 0.4, size * 2.2);
   } else if (fx.chase) {
     const gap = clamp(1 - ball.dist / Math.max(1, fx.chase.catchDist), 0, 1);
-    ctx.font = (size * 1.9) + "px serif";
-    ctx.fillText("🐕", bx - 30, by + 40 + gap * 180);
+    drawEmoji("🐕", bx - 30, by + 40 + gap * 180, size * 1.9);
   }
 }
 
@@ -1671,10 +1810,7 @@ function drawBatter() {
   ctx.ellipse(W / 2, y + 8 * zoom, 22 * zoom, 8 * zoom, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.font = s + "px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(ch.emoji, x, y);
+  drawEmojiBaseline(ch.emoji, x, y, s);
 
   // Dogs bite the bat, so it pivots from the snout and sweeps differently.
   const idleAngle = ch.mouth ? -1.25 : -1.9;
@@ -1717,15 +1853,14 @@ function drawBatter() {
 
 function drawDesserts() {
   if (!fx.desserts.length) return;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
   for (let i = 0; i < fx.desserts.length; i++) {
     const d = fx.desserts[i];
+    const sp = emojiSprite(d.emoji, d.size);
+    const dim = sp.dim;
     ctx.save();
     ctx.translate(d.x, d.y);
     ctx.rotate(d.rot);
-    ctx.font = d.size + "px serif";
-    ctx.fillText(d.emoji, 0, 0);
+    ctx.drawImage(sp, -dim / 2, -dim / 2, dim, dim);
     ctx.restore();
   }
 }
@@ -1746,11 +1881,8 @@ function drawLick() {
   ctx.beginPath();
   ctx.ellipse(W / 2, H * 0.45, W * 0.55, H * 0.30, 0.3, 0, Math.PI * 2);
   ctx.fill();
-  ctx.font = "160px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
   ctx.globalAlpha = a;
-  ctx.fillText("👅", W / 2, H * 0.45);
+  drawEmoji("👅", W / 2, H * 0.45, 160);
   ctx.globalAlpha = 1;
 }
 
@@ -1861,8 +1993,7 @@ function drawResultBanner() {
 
   let y = boxY + 26;
   if (result.landmarkEmoji) {
-    ctx.font = "26px serif";
-    ctx.fillText(result.landmarkEmoji, W / 2, y);
+    drawEmoji(result.landmarkEmoji, W / 2, y, 26);
     y += 26;
   }
   ctx.fillStyle = result.sweet ? "#ffe14d" : "#ffffff";
@@ -1899,8 +2030,7 @@ function drawResultBanner() {
 
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.font = "24px serif";
-    ctx.fillText(pitcher().emoji, 24, barY + barH / 2);
+    drawEmoji(pitcher().emoji, 36, barY + barH / 2, 24);
 
     ctx.fillStyle = "#eaf3ff";
     ctx.font = "14px Verdana";
@@ -1969,8 +2099,28 @@ let lastTime = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+
   update(dt);
+
+  const t0 = performance.now();
   draw();
+  const drawMs = performance.now() - t0;
+
+  // Rolling average of what drawing costs, and the adaptive response to it.
+  drawAvgMs += (drawMs - drawAvgMs) * 0.05;
+  if (JUICE.adaptive) {
+    if (drawAvgMs > JUICE.slowFrameMs) {
+      particleScale = Math.max(JUICE.minParticleScale, particleScale - 0.02);
+    } else if (drawAvgMs < JUICE.slowFrameMs * 0.5) {
+      particleScale = Math.min(1, particleScale + 0.01);
+    }
+  } else {
+    particleScale = 1;
+  }
+
+  // Pre-render emoji we'll need shortly, in whatever time is going spare.
+  processWarmQueue(game.state === "menu" || game.state === "windup" ? 3 : 1);
+
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

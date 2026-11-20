@@ -1972,8 +1972,24 @@ function drawResultBanner() {
   ctx.font = "italic 15px Verdana";
   const annLines = layoutText(result.announcer, W - 66);
 
-  const boxY = 140;
-  const boxH = 30 + headLines.length * 24 + 48 + 24 + annLines.length * 19;
+  // Build the list of rows first, then size the box to fit them. Working it
+  // out twice by hand is how the announcer line ended up hanging out of the
+  // bottom of the box when a landmark name wrapped onto two lines.
+  const rows = [];
+  if (result.landmarkEmoji) rows.push({ kind: "emoji", h: 28 });
+  headLines.forEach(function (t) { rows.push({ kind: "head", text: t, h: 24 }); });
+  rows.push({ kind: "gap", h: 14 });
+  rows.push({ kind: "dist", h: 40 });
+  if (result.sub) rows.push({ kind: "sub", text: result.sub, h: 20 });
+  annLines.forEach(function (t, i) {
+    rows.push({ kind: "ann", text: t, h: 19, first: i === 0 });
+  });
+
+  const padTop = 14, padBottom = 14;
+  let boxH = padTop + padBottom;
+  rows.forEach(function (r) { boxH += r.h + (r.first ? 8 : 0); });
+
+  const boxY = Math.max(96, 150 - Math.round((boxH - 150) / 2));
   const pop = clamp((CONFIG.resultSeconds - game.timer) * 9, 0, 1);   // slides in
 
   ctx.save();
@@ -1991,29 +2007,32 @@ function drawResultBanner() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  let y = boxY + 26;
-  if (result.landmarkEmoji) {
-    drawEmoji(result.landmarkEmoji, W / 2, y, 26);
-    y += 26;
-  }
-  ctx.fillStyle = result.sweet ? "#ffe14d" : "#ffffff";
-  ctx.font = "bold 20px Verdana";
-  for (let i = 0; i < headLines.length; i++) { ctx.fillText(headLines[i], W / 2, y); y += 24; }
-
-  y += 22;
-  ctx.fillStyle = "#7cf07c";
-  ctx.font = "bold 38px Verdana";
-  ctx.fillText(Math.round(result.distance).toLocaleString() + " ft", W / 2, y);
-
-  y += 26;
-  ctx.fillStyle = "#8fa6bb";
-  ctx.font = "13px Verdana";
-  ctx.fillText(result.sub, W / 2, y);
-
-  y += 22;
-  ctx.fillStyle = "#ffd98a";
-  ctx.font = "italic 15px Verdana";
-  for (let i = 0; i < annLines.length; i++) { ctx.fillText(annLines[i], W / 2, y); y += 19; }
+  // Walk the same row list that sized the box, so the two can't drift apart.
+  let y = boxY + padTop;
+  rows.forEach(function (r) {
+    if (r.first) y += 8;
+    const mid = y + r.h / 2;
+    if (r.kind === "emoji") {
+      drawEmoji(result.landmarkEmoji, W / 2, mid, 26);
+    } else if (r.kind === "head") {
+      ctx.fillStyle = result.sweet ? "#ffe14d" : "#ffffff";
+      ctx.font = "bold 20px Verdana";
+      ctx.fillText(r.text, W / 2, mid);
+    } else if (r.kind === "dist") {
+      ctx.fillStyle = "#7cf07c";
+      ctx.font = "bold 38px Verdana";
+      ctx.fillText(Math.round(result.distance).toLocaleString() + " ft", W / 2, mid);
+    } else if (r.kind === "sub") {
+      ctx.fillStyle = "#8fa6bb";
+      ctx.font = "13px Verdana";
+      ctx.fillText(r.text, W / 2, mid);
+    } else if (r.kind === "ann") {
+      ctx.fillStyle = "#ffd98a";
+      ctx.font = "italic 15px Verdana";
+      ctx.fillText(r.text, W / 2, mid);
+    }
+    y += r.h;
+  });
 
   ctx.restore();
 
